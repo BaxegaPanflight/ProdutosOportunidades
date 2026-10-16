@@ -1,0 +1,40 @@
+name: Versão
+
+# Cada alteração que entra na branch main gera uma nova versão (tag + release)
+# com a lista automática do que mudou. Só roda depois que o CI passa.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Calcular próxima versão
+        id: v
+        run: |
+          base=$(node -p "require('./package.json').version")          # ex.: 0.1.0
+          major_minor=${base%.*}
+          last=$(git tag --list "v${major_minor}.*" --sort=-v:refname | head -1)
+          if [ -z "$last" ]; then next="v${base}"; else patch=${last##*.}; next="v${major_minor}.$((patch+1))"; fi
+          if git tag --points-at HEAD | grep -q '^v'; then echo "skip=true" >> "$GITHUB_OUTPUT"; fi
+          echo "tag=$next" >> "$GITHUB_OUTPUT"
+      - name: Criar versão
+        if: steps.v.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.v.outputs.tag }}" \
+            --target "${{ github.event.workflow_run.head_sha }}" \
+            --title "${{ steps.v.outputs.tag }}" \
+            --generate-notes
