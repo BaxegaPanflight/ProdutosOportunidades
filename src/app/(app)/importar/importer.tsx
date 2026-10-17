@@ -191,7 +191,7 @@ export function Importer() {
         <div className="flex flex-wrap items-center gap-3">
           <Input
             type="file"
-            accept=".xlsx"
+            accept=".xlsx,.xlsm"
             className="h-auto max-w-md py-1.5"
             disabled={phase === "reading" || phase === "importing"}
             onChange={(e) => onFile(e.currentTarget.files?.[0])}
