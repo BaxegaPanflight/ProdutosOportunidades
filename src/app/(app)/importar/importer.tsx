@@ -1,11 +1,10 @@
 "use client";
 
-import type ExcelJSType from "exceljs";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Badge, btn, Card, Input, Select, Table } from "@/components/ui";
 import { normCode } from "@/lib/codes";
-import { listSheets, readSheet } from "@/lib/import/excel-reader";
+import { openXlsx, type XlsxWorkbook } from "@/lib/import/xlsx-stream";
 import { parsePlanilha, toPayload } from "@/lib/import/planilha";
 import type { DemandOrigin, ImportGroup, ParseResult, SheetData } from "@/lib/import/types";
 import { ORIGIN, STATUS } from "@/lib/labels";
@@ -33,7 +32,7 @@ export function Importer() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState("");
-  const [workbook, setWorkbook] = useState<ExcelJSType.Workbook | null>(null);
+  const [workbook, setWorkbook] = useState<XlsxWorkbook | null>(null);
   const [sheets, setSheets] = useState<string[]>([]);
   const [sheet, setSheet] = useState<SheetData | null>(null);
   const [overrides, setOverrides] = useState<Record<string, DemandOrigin>>({});
@@ -52,9 +51,12 @@ export function Importer() {
     }
   }, [sheet, overrides]);
 
-  async function loadSheet(wb: ExcelJSType.Workbook, name?: string) {
+  async function loadSheet(wb: XlsxWorkbook, name?: string) {
     setError(null);
-    const data = readSheet(wb, name);
+    setPhase("reading");
+    setProgress("Lendo a aba…");
+    const data = await wb.readSheet(name, (f) => setProgress(`Lendo a aba… ${Math.round(f * 100)}%`));
+    setProgress("Conferindo códigos já cadastrados…");
     const parsed = parsePlanilha(data);
     setSheet(data);
     setOverrides({});
@@ -76,6 +78,7 @@ export function Importer() {
       }
     }
     setExisting(found);
+    setProgress("");
     setPhase("ready");
   }
 
@@ -86,15 +89,13 @@ export function Importer() {
     setSummary(null);
     setFileName(file.name);
     try {
-      const ExcelJS = (await import("exceljs")).default;
-      const wb = new ExcelJS.Workbook();
-      await wb.xlsx.load(await file.arrayBuffer());
+      const wb = await openXlsx(file);
       setWorkbook(wb);
-      const names = listSheets(wb);
-      setSheets(names);
-      await loadSheet(wb, names[0]);
+      setSheets(wb.sheetNames);
+      await loadSheet(wb, wb.sheetNames[0]);
     } catch (e) {
       setError(`Não foi possível ler a planilha: ${(e as Error).message}`);
+      setProgress("");
       setPhase("idle");
     }
   }
@@ -143,13 +144,14 @@ export function Importer() {
             skipped++;
             continue;
           }
-          const sha = await sha256(img.data);
+          const data = await img.load();
+          const sha = await sha256(data);
           if (seen.has(sha)) continue;
           seen.add(sha);
           const path = `products/${pid}/${sha.slice(0, 32)}.${img.ext === "jpeg" ? "jpg" : img.ext}`;
           const { error: upErr } = await supabase.storage
             .from(IMAGE_BUCKET)
-            .upload(path, img.data, { contentType: mime, upsert: false });
+            .upload(path, data, { contentType: mime, upsert: false });
           if (upErr && !/exists|duplicate/i.test(upErr.message)) throw new Error(`Foto de ${g.main_code}: ${upErr.message}`);
           const { error: e2 } = await supabase
             .from("product_images")
@@ -200,16 +202,26 @@ export function Importer() {
             <Select
               className="w-56"
               value={sheet?.sheetName}
-              onChange={(e) => loadSheet(workbook, e.currentTarget.value).catch((er) => setError(String(er)))}
+              onChange={(e) =>
+                loadSheet(workbook, e.currentTarget.value).catch((er) => {
+                  setError(`Não foi possível ler a aba: ${(er as Error).message}`);
+                  setPhase("idle");
+                })
+              }
             >
               {sheets.map((s) => (
                 <option key={s}>{s}</option>
               ))}
             </Select>
           )}
-          {phase === "reading" && <span className="text-sm text-ink-soft">Lendo planilha…</span>}
+          {phase === "reading" && <span className="text-sm text-ink-soft">{progress || "Lendo planilha…"}</span>}
         </div>
         {error && <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+        {workbook?.warnings.map((w) => (
+          <p key={w} className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {w}
+          </p>
+        ))}
       </Card>
 
       {result && phase !== "idle" && phase !== "reading" && (

@@ -6,7 +6,8 @@ export interface SheetData {
   rows: Cell[][];
   /** número da linha no Excel para cada item de rows */
   rowNumbers: number[];
-  images: { rowIndex: number; ext: string; data: Uint8Array }[];
+  /** fotos ancoradas nas linhas; o conteúdo só é lido do arquivo ao chamar load() */
+  images: { rowIndex: number; ext: string; size?: number; load: () => Promise<Uint8Array> }[];
 }
 
 export type DemandOrigin = "cliente" | "pesquisa_interna" | "mercado";
