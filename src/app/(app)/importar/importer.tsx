@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Badge, btn, Card, Input, Select, Table } from "@/components/ui";
 import { normCode } from "@/lib/codes";
 import { openXlsx, type XlsxWorkbook } from "@/lib/import/xlsx-stream";
-import { parsePlanilha, toPayload } from "@/lib/import/planilha";
+import { mapColumns, parsePlanilha, toPayload } from "@/lib/import/planilha";
 import type { DemandOrigin, ImportGroup, ParseResult, SheetData } from "@/lib/import/types";
 import { ORIGIN, STATUS } from "@/lib/labels";
 import { createClient } from "@/lib/supabase/client";
@@ -15,6 +15,8 @@ type Phase = "idle" | "reading" | "ready" | "importing" | "done";
 type Existing = Map<string, { productId: string; mainCode: string }>;
 
 const CHUNK = 100;
+/** nomes comuns da aba principal de dados */
+const DATA_SHEET = /^(data|dados|base|demandas)$/i;
 const MIME: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -34,6 +36,7 @@ export function Importer() {
   const [fileName, setFileName] = useState("");
   const [workbook, setWorkbook] = useState<XlsxWorkbook | null>(null);
   const [sheets, setSheets] = useState<string[]>([]);
+  const [sheetName, setSheetName] = useState("");
   const [sheet, setSheet] = useState<SheetData | null>(null);
   const [overrides, setOverrides] = useState<Record<string, DemandOrigin>>({});
   const [existing, setExisting] = useState<Existing>(new Map());
@@ -51,11 +54,17 @@ export function Importer() {
     }
   }, [sheet, overrides]);
 
-  async function loadSheet(wb: XlsxWorkbook, name?: string) {
+  async function loadSheet(wb: XlsxWorkbook, name: string) {
     setError(null);
+    setSheetName(name);
+    setSheet(null);
     setPhase("reading");
     setProgress("Lendo a aba…");
-    const data = await wb.readSheet(name, (f) => setProgress(`Lendo a aba… ${Math.round(f * 100)}%`));
+    const data = await wb.readSheet(name, {
+      onProgress: (f) => setProgress(`Lendo a aba… ${Math.round(f * 100)}%`),
+      // o cabeçalho pode estar abaixo de linhas de filtro/título
+      isHeader: (cells) => mapColumns(cells).byKey.code !== undefined,
+    });
     setProgress("Conferindo códigos já cadastrados…");
     const parsed = parsePlanilha(data);
     setSheet(data);
@@ -88,13 +97,19 @@ export function Importer() {
     setError(null);
     setSummary(null);
     setFileName(file.name);
+    let sheets: string[] = [];
     try {
       const wb = await openXlsx(file);
+      sheets = wb.sheetNames;
       setWorkbook(wb);
       setSheets(wb.sheetNames);
-      await loadSheet(wb, wb.sheetNames[0]);
+      // abre primeiro a aba de dados, se houver (ex.: "DATA"), senão a primeira
+      await loadSheet(wb, wb.sheetNames.find((n) => DATA_SHEET.test(n.trim())) ?? wb.sheetNames[0]);
     } catch (e) {
-      setError(`Não foi possível ler a planilha: ${(e as Error).message}`);
+      setError(
+        `Não foi possível ler a planilha: ${(e as Error).message}` +
+          (sheets.length > 1 ? " Se for outra aba, escolha-a na lista ao lado do arquivo." : ""),
+      );
       setProgress("");
       setPhase("idle");
     }
@@ -201,7 +216,7 @@ export function Importer() {
           {sheets.length > 1 && workbook && (
             <Select
               className="w-56"
-              value={sheet?.sheetName}
+              value={sheetName}
               onChange={(e) =>
                 loadSheet(workbook, e.currentTarget.value).catch((er) => {
                   setError(`Não foi possível ler a aba: ${(er as Error).message}`);

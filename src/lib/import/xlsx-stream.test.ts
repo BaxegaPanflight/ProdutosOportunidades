@@ -27,7 +27,7 @@ async function sample() {
   ]);
   ws.getCell("D4").value = "sem data";
   ws.getCell("H5").value = "coluna sem cabeçalho";
-  const img = wb.addImage({ buffer: Buffer.from(PNG), extension: "png" });
+  const img = wb.addImage({ buffer: Buffer.from(PNG) as unknown as ExcelJS.Buffer, extension: "png" });
   ws.addImage(img, { tl: { col: 6, row: 1 }, ext: { width: 10, height: 10 } }); // linha 2
   ws.addImage(img, { tl: { col: 6, row: 3.2 }, ext: { width: 10, height: 10 } }); // linha 4
   wb.addWorksheet("Outra").addRow(["x"]);
@@ -57,6 +57,20 @@ test("lê abas, células e fotos sem carregar o arquivo inteiro", async () => {
   const outra = await wb.readSheet("Outra");
   assert.deepEqual(outra.headers, ["x"]);
   assert.equal(outra.rows.length, 0);
+});
+
+test("acha o cabeçalho abaixo de linhas de filtro", async () => {
+  const x = new ExcelJS.Workbook();
+  const ws = x.addWorksheet("FILTER");
+  ws.addRow(["CONTEM", "usinagem"]);
+  ws.addRow(["N CONTEM", null, "OR"]);
+  ws.addRow(["Código", "Descrição"]);
+  ws.addRow(["RE51774", "Sensor"]);
+  const wb = await openXlsx(new Blob([await x.xlsx.writeBuffer()]));
+  const s = await wb.readSheet(undefined, { isHeader: (cells) => cells.includes("Código") });
+  assert.deepEqual(s.headers, ["Código", "Descrição", ""]);
+  assert.deepEqual(s.rowNumbers, [4]);
+  assert.deepEqual(s.rows[0], ["RE51774", "Sensor", null]);
 });
 
 test("recusa arquivo que não é planilha", async () => {

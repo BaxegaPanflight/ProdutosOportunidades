@@ -14,10 +14,22 @@ type Entry = { name: string; method: number; compSize: number; size: number; off
 
 export interface XlsxWorkbook {
   sheetNames: string[];
-  readSheet(sheetName?: string, onProgress?: (fraction: number) => void): Promise<SheetData>;
+  readSheet(sheetName?: string, options?: ReadSheetOptions): Promise<SheetData>;
   /** avisos gerais do arquivo (ex.: fotos em formato não suportado) */
   warnings: string[];
 }
+
+export interface ReadSheetOptions {
+  onProgress?: (fraction: number) => void;
+  /**
+   * Reconhece a linha de cabeçalho (procurada nas primeiras 50 linhas com dados).
+   * Linhas acima dela, como critérios de filtro, são ignoradas.
+   * Sem isso, o cabeçalho é a primeira linha com dados.
+   */
+  isHeader?: (cells: string[]) => boolean;
+}
+
+const HEADER_SEARCH_ROWS = 50;
 
 // ---------------------------------------------------------------- ZIP
 
@@ -133,6 +145,9 @@ async function eachBlock(
   const reader = (await entryStream(file, entry)).getReader();
   const dec = new TextDecoder();
   let buf = "";
+  // até onde o buffer já foi procurado (sem isso, abas sem fechamento de bloco
+  // seriam varridas de novo a cada pedaço — lentidão quadrática)
+  let scanned = 0;
   let read = 0;
   let lastYield = Date.now();
   for (;;) {
@@ -142,12 +157,14 @@ async function eachBlock(
       buf += dec.decode(value, { stream: true });
     } else if (done) buf += dec.decode();
     let last = -1;
-    closeTag.lastIndex = 0;
+    closeTag.lastIndex = Math.max(0, scanned - 64);
     for (let m = closeTag.exec(buf); m; m = closeTag.exec(buf)) last = m.index + m[0].length;
     if (last > 0) {
       onBlock(buf.slice(0, last));
       buf = buf.slice(last);
     }
+    scanned = buf.length;
+    if (done && buf) onBlock(buf);
     if (onProgress && entry.size) onProgress(Math.min(1, read / entry.size));
     if (done) break;
     // deixa a tela respirar em planilhas grandes
@@ -317,7 +334,7 @@ export async function openXlsx(file: Blob): Promise<XlsxWorkbook> {
     return dateStyles;
   }
 
-  async function readSheet(sheetName?: string, onProgress?: (fraction: number) => void): Promise<SheetData> {
+  async function readSheet(sheetName?: string, options: ReadSheetOptions = {}): Promise<SheetData> {
     const sh = sheetName ? sheets.find((s) => s.name === sheetName) : sheets[0];
     if (!sh) throw new Error("Aba não encontrada na planilha");
     const [ss, ds] = [await sharedStrings(), await styles()];
@@ -348,7 +365,7 @@ export async function openXlsx(file: Blob): Promise<XlsxWorkbook> {
     await eachBlock(
       file,
       sheetEntry,
-      /<\/(?:\w+:)?row>/g,
+      /<\/(?:\w+:)?row>|<(?:\w+:)?row\b[^>]*\/>/g,
       (xml) => {
         for (const rm of xml.matchAll(/<(?:\w+:)?row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?row>)/g)) {
           const ra = attrs(rm[1]);
@@ -369,10 +386,18 @@ export async function openXlsx(file: Blob): Promise<XlsxWorkbook> {
           if (values.length) byNumber.set(r, values);
         }
       },
-      onProgress,
+      options.onProgress,
     );
 
-    const headerRow = byNumber.get(1) ?? [];
+    const numbers = [...byNumber.keys()].sort((a, b) => a - b);
+    const asText = (cells: Cell[]) =>
+      Array.from({ length: colCount }, (_, c) => (cells[c] == null ? "" : String(cells[c]).trim()));
+    const isHeader = options.isHeader;
+    const headerNumber =
+      (isHeader && numbers.slice(0, HEADER_SEARCH_ROWS).find((r) => isHeader(asText(byNumber.get(r)!)))) ||
+      numbers[0] ||
+      1;
+    const headerRow = byNumber.get(headerNumber) ?? [];
     const headers: string[] = [];
     for (let c = 0; c < colCount; c++) {
       const h = headerRow[c];
@@ -382,8 +407,8 @@ export async function openXlsx(file: Blob): Promise<XlsxWorkbook> {
     const rows: Cell[][] = [];
     const rowNumbers: number[] = [];
     const rowIndexByNumber = new Map<number, number>();
-    for (const r of [...byNumber.keys()].sort((a, b) => a - b)) {
-      if (r === 1) continue;
+    for (const r of numbers) {
+      if (r <= headerNumber) continue;
       const src = byNumber.get(r)!;
       const values: Cell[] = [];
       for (let c = 0; c < colCount; c++) values.push(src[c] ?? null);
