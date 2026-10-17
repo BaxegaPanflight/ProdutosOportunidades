@@ -50,7 +50,7 @@ export function ActionForm({
     <form ref={ref} action={formAction} className={className}>
       {children}
       {state?.error && (
-        <p role="alert" className="mt-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p role="alert" className="mt-2 rounded-md bg-red-50 dark:bg-red-950/40 px-3 py-2 text-sm text-red-800 dark:text-red-300">
           {state.error}
           {state.link && (
             <a href={state.link.href} className="ml-2 font-medium underline">
@@ -60,7 +60,7 @@ export function ActionForm({
         </p>
       )}
       {state?.ok && state.message && (
-        <p role="status" className="mt-2 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <p role="status" className="mt-2 rounded-md bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-300">
           {state.message}
         </p>
       )}
@@ -95,7 +95,7 @@ export function DeleteButton({
       <SubmitButton variant="danger" size="sm" pendingText="…">
         {label}
       </SubmitButton>
-      {state?.error && <span className="ml-2 text-xs text-red-700">{state.error}</span>}
+      {state?.error && <span className="ml-2 text-xs text-red-700 dark:text-red-400">{state.error}</span>}
     </form>
   );
 }

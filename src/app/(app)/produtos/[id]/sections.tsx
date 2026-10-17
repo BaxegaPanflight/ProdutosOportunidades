@@ -157,7 +157,7 @@ export function OverviewSection({ ctx }: { ctx: Ctx }) {
                     <img
                       src={img.url}
                       alt={img.caption ?? product.main_code}
-                      className="aspect-square w-full rounded border border-line bg-white object-contain"
+                      className="aspect-square w-full rounded border border-line bg-panel object-contain"
                     />
                   </a>
                 ) : (

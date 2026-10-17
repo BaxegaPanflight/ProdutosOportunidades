@@ -1,5 +1,6 @@
 import clsx from "clsx";
-import { ImageOff, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ImageOff, Search } from "lucide-react";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { AutoSubmitSelect } from "@/components/forms";
 import { Badge, btn, Card, Empty, Input, LinkButton, PageHeader, Table } from "@/components/ui";
@@ -7,37 +8,24 @@ import { requireMember } from "@/lib/auth";
 import { fmtDate, fmtNum } from "@/lib/format";
 import { ORIGIN, STATUS, STATUS_ORDER } from "@/lib/labels";
 import { signedUrls } from "@/lib/storage";
-import type { ProductStatus } from "@/lib/import/types";
+import { parsePageSize, parseView, PREF_COOKIES } from "./prefs";
+import { PendingBadge, ProductCard, type ProductRow as Row } from "./product-card";
+import { ViewControls } from "./view-controls";
 
 export const metadata = { title: "Produtos" };
 
 type SP = Record<string, string | undefined>;
 
-interface Row {
-  id: string;
-  main_code: string;
-  description: string | null;
-  manufacturer: string | null;
-  status: ProductStatus;
-  demand_count: number;
-  customer_demand_count: number;
-  customer_count: number;
-  last_demand_at: string | null;
-  market_qty: number | null;
-  market_period: string | null;
-  sample_qty: number | null;
-  pending: string[];
-  image_path: string | null;
-  total_count: number;
-}
-
-const PAGE_SIZE = 50;
 const one = <T,>(v: string | undefined, f: (s: string) => T = (s) => s as T): T[] | null => (v ? [f(v)] : null);
 
 export default async function ProdutosPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
   const { supabase, can } = await requireMember();
   const page = Math.max(1, Number(sp.pagina ?? 1) || 1);
+  // exibição e quantidade por página: da URL, senão a última escolha salva
+  const jar = await cookies();
+  const view = parseView(sp.visao, jar.get(PREF_COOKIES.view)?.value);
+  const PAGE_SIZE = parsePageSize(sp.por, jar.get(PREF_COOKIES.perPage)?.value);
 
   const [rowsRes, mans, segs, techs, custs, regions, counts] = await Promise.all([
     supabase.rpc("search_products", {
@@ -68,6 +56,8 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
   const rows = (rowsRes.data ?? []) as Row[];
   const total = rows[0]?.total_count ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const first = (page - 1) * PAGE_SIZE + 1;
+  const last = first + rows.length - 1;
   const urls = await signedUrls(supabase, rows.map((r) => r.image_path));
   const countBy = new Map<string, number>(
     ((counts.data ?? []) as { status: string; total: number }[]).map((c) => [c.status, Number(c.total)]),
@@ -91,12 +81,12 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
       />
 
       {/* Funil: atalhos por status */}
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0">
         <Link
           href={qs({ status: undefined, pagina: undefined })}
           className={clsx(
-            "rounded-full border px-3 py-1 text-xs",
-            !sp.status ? "border-brand-700 bg-brand-700 text-white" : "border-line bg-white text-ink-soft hover:border-ink-faint",
+            "shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs",
+            !sp.status ? "border-brand-700 bg-brand-700 text-white" : "border-line bg-panel text-ink-soft hover:border-ink-faint",
           )}
         >
           Todos · {fmtNum(allCount, 0)}
@@ -106,8 +96,8 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
             key={s}
             href={qs({ status: s, pagina: undefined })}
             className={clsx(
-              "rounded-full border px-3 py-1 text-xs",
-              sp.status === s ? "border-brand-700 bg-brand-700 text-white" : "border-line bg-white text-ink-soft hover:border-ink-faint",
+              "shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs",
+              sp.status === s ? "border-brand-700 bg-brand-700 text-white" : "border-line bg-panel text-ink-soft hover:border-ink-faint",
             )}
           >
             {STATUS[s].label} · {fmtNum(countBy.get(s) ?? 0, 0)}
@@ -115,7 +105,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
         ))}
       </div>
 
-      <form method="get" action="/produtos" className="mb-4 rounded-lg border border-line bg-white p-4">
+      <form method="get" action="/produtos" className="mb-4 rounded-lg border border-line bg-panel p-4">
         {sp.status && <input type="hidden" name="status" value={sp.status} />}
         <div className="flex gap-2">
           <div className="relative flex-1">
@@ -200,12 +190,42 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
         </details>
       </form>
 
-      <Card bodyClassName="p-0">
-        {rowsRes.error ? (
-          <p className="p-4 text-sm text-red-700">Erro na busca: {rowsRes.error.message}</p>
-        ) : rows.length === 0 ? (
+      {/* barra de resultados: contagem, quantidade por página e exibição */}
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-ink-soft">
+          {total > 0 ? (
+            <>
+              Mostrando{" "}
+              <span className="font-medium text-ink">
+                {fmtNum(first, 0)}–{fmtNum(last, 0)}
+              </span>{" "}
+              de <span className="font-medium text-ink">{fmtNum(total, 0)}</span>
+            </>
+          ) : (
+            "Nenhum resultado"
+          )}
+        </p>
+        <ViewControls view={view} perPage={PAGE_SIZE} params={sp} />
+      </div>
+
+      {rowsRes.error ? (
+        <Card>
+          <p className="text-sm text-red-700 dark:text-red-400">Erro na busca: {rowsRes.error.message}</p>
+        </Card>
+      ) : rows.length === 0 ? (
+        <Card>
           <Empty>Nenhum produto encontrado.</Empty>
-        ) : (
+        </Card>
+      ) : view === "cards" ? (
+        <ul className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          {rows.map((r) => (
+            <li key={r.id}>
+              <ProductCard row={r} image={r.image_path ? urls.get(r.image_path) : undefined} strategic={can.strategic} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <Card bodyClassName="p-0">
           <Table>
             <thead>
               <tr>
@@ -230,7 +250,11 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
                   <td>
                     {r.image_path && urls.get(r.image_path) ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={urls.get(r.image_path)} alt="" className="size-10 rounded border border-line object-contain" />
+                      <img
+                        src={urls.get(r.image_path)}
+                        alt=""
+                        className="size-10 rounded border border-line bg-white object-contain"
+                      />
                     ) : (
                       <div className="flex size-10 items-center justify-center rounded border border-dashed border-line text-ink-faint">
                         <ImageOff className="size-4" aria-hidden />
@@ -265,41 +289,56 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
                   )}
                   <td className="text-right tabular-nums">{r.sample_qty ?? "—"}</td>
                   <td>
-                    {r.pending.length > 0 ? (
-                      <span title={`Falta: ${r.pending.join(", ")}`}>
-                        <Badge tone="amber">{r.pending.length} pendente{r.pending.length > 1 ? "s" : ""}</Badge>
-                      </span>
-                    ) : (
-                      <Badge tone="green">completo</Badge>
-                    )}
+                    <PendingBadge pending={r.pending} />
                   </td>
                 </tr>
               ))}
             </tbody>
           </Table>
-        )}
-      </Card>
+        </Card>
+      )}
 
       {pages > 1 && (
-        <div className="mt-4 flex items-center justify-between text-sm">
+        <nav aria-label="Paginação" className="mt-5 flex items-center justify-between gap-3 text-sm">
           <span className="text-ink-soft">
-            Página {page} de {pages}
+            Página <span className="font-medium text-ink">{page}</span> de {fmtNum(pages, 0)}
           </span>
-          <div className="flex gap-2">
-            {page > 1 && (
-              <Link className={btn("secondary", "sm")} href={qs({ pagina: String(page - 1) })}>
-                Anterior
-              </Link>
-            )}
-            {page < pages && (
-              <Link className={btn("secondary", "sm")} href={qs({ pagina: String(page + 1) })}>
-                Próxima
-              </Link>
-            )}
+          <div className="flex gap-1.5">
+            <PageLink href={qs({ pagina: undefined })} disabled={page <= 1} label="Primeira página" icon={ChevronsLeft} />
+            <PageLink href={qs({ pagina: String(page - 1) })} disabled={page <= 1} label="Página anterior" icon={ChevronLeft} />
+            <PageLink href={qs({ pagina: String(page + 1) })} disabled={page >= pages} label="Próxima página" icon={ChevronRight} />
+            <PageLink href={qs({ pagina: String(pages) })} disabled={page >= pages} label="Última página" icon={ChevronsRight} />
           </div>
-        </div>
+        </nav>
       )}
     </>
+  );
+}
+
+function PageLink({
+  href,
+  disabled,
+  label,
+  icon: Icon,
+}: {
+  href: string;
+  disabled: boolean;
+  label: string;
+  icon: typeof ChevronLeft;
+}) {
+  const cls = clsx(btn("secondary", "sm"), "size-9 px-0");
+  if (disabled)
+    return (
+      <span aria-disabled className={clsx(cls, "pointer-events-none opacity-40")}>
+        <Icon className="size-4" aria-hidden />
+        <span className="sr-only">{label}</span>
+      </span>
+    );
+  return (
+    <Link href={href} className={cls} title={label}>
+      <Icon className="size-4" aria-hidden />
+      <span className="sr-only">{label}</span>
+    </Link>
   );
 }
 
@@ -322,7 +361,7 @@ function FilterSelect({
       <AutoSubmitSelect
         name={name}
         defaultValue={value ?? ""}
-        className="h-9 w-full rounded-md border border-line bg-white px-3 text-sm focus:border-brand-600 focus:outline-none"
+        className="h-9 w-full rounded-md border border-line bg-panel px-3 text-sm focus:border-brand-600 focus:outline-none"
       >
         <option value="">{emptyLabel}</option>
         {options.map(([v, l]) => (

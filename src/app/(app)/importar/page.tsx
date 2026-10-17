@@ -25,7 +25,7 @@ export default async function ImportarPage() {
       {!!batches?.length && (
         <section className="mt-8">
           <h2 className="mb-2 text-sm font-semibold">Importações anteriores</h2>
-          <ul className="divide-y divide-line rounded-lg border border-line bg-white text-sm">
+          <ul className="divide-y divide-line rounded-lg border border-line bg-panel text-sm">
             {batches.map((b) => {
               const st = (b.stats ?? {}) as Record<string, number>;
               return (

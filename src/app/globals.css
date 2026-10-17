@@ -1,18 +1,40 @@
 @import "tailwindcss";
 
+/* tema escuro pela classe .dark no <html> (escolhida pelo usuário) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* cores da marca Panflight: azul #0C4B9A e preto #1B1B1B */
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --color-brand-50: #eef5fb;
-  --color-brand-100: #d6e7f5;
-  --color-brand-600: #1f6fb2;
-  --color-brand-700: #175a93;
-  --color-brand-800: #124874;
-  --color-brand-900: #0d3354;
-  --color-ink: #17212b;
-  --color-ink-soft: #4b5867;
-  --color-ink-faint: #8693a1;
-  --color-line: #e2e7ec;
-  --color-surface: #f5f7f9;
+  --color-brand-50: #edf3fb;
+  --color-brand-100: #d3e1f4;
+  --color-brand-600: #1559b0;
+  --color-brand-700: #0c4b9a;
+  --color-brand-800: #0a3d7e;
+  --color-brand-900: #072c5c;
+  --color-onyx: #1b1b1b;
+  --color-ink: #1b1f24;
+  --color-ink-soft: #4d5865;
+  --color-ink-faint: #858f9b;
+  --color-line: #e1e6ec;
+  --color-surface: #f3f5f8;
+  --color-panel: #ffffff;
+}
+
+.dark {
+  color-scheme: dark;
+  --color-brand-50: #12233a;
+  --color-brand-100: #1a3354;
+  --color-brand-600: #5a95e0;
+  --color-brand-700: #3d7fd6;
+  --color-brand-800: #a9c8f0;
+  --color-brand-900: #d6e5f8;
+  --color-ink: #e7eaef;
+  --color-ink-soft: #a9b2be;
+  --color-ink-faint: #6f7a87;
+  --color-line: #2a3039;
+  --color-surface: #0f1114;
+  --color-panel: #181b20;
 }
 
 html,

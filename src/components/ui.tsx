@@ -12,9 +12,9 @@ export function btn(variant: Variant = "primary", size: Size = "md") {
     "disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
     size === "md" ? "h-9 px-3.5 text-sm" : "h-7 px-2.5 text-xs",
     variant === "primary" && "bg-brand-700 text-white hover:bg-brand-800",
-    variant === "secondary" && "border border-line bg-white text-ink hover:bg-surface",
+    variant === "secondary" && "border border-line bg-panel text-ink hover:bg-surface",
     variant === "ghost" && "text-ink-soft hover:bg-surface hover:text-ink",
-    variant === "danger" && "text-red-700 hover:bg-red-50",
+    variant === "danger" && "text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40",
   );
 }
 
@@ -28,7 +28,7 @@ export function LinkButton({
 }
 
 const fieldBase =
-  "w-full rounded-md border border-line bg-white px-3 text-sm text-ink placeholder:text-ink-faint " +
+  "w-full rounded-md border border-line bg-panel px-3 text-sm text-ink placeholder:text-ink-faint " +
   "focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/20 disabled:bg-surface";
 
 export function Input({ className, ...props }: ComponentProps<"input">) {
@@ -77,7 +77,7 @@ export function Card({
   bodyClassName?: string;
 }) {
   return (
-    <section className={clsx("rounded-lg border border-line bg-white", className)}>
+    <section className={clsx("rounded-lg border border-line bg-panel", className)}>
       {(title || actions) && (
         <header className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
           <h2 className="text-sm font-semibold text-ink">{title}</h2>
@@ -90,13 +90,13 @@ export function Card({
 }
 
 const TONES: Record<Tone, string> = {
-  gray: "bg-gray-100 text-gray-700 ring-gray-200",
-  blue: "bg-blue-50 text-blue-800 ring-blue-200",
-  amber: "bg-amber-50 text-amber-800 ring-amber-200",
-  green: "bg-emerald-50 text-emerald-800 ring-emerald-200",
-  red: "bg-red-50 text-red-800 ring-red-200",
-  violet: "bg-violet-50 text-violet-800 ring-violet-200",
-  teal: "bg-teal-50 text-teal-800 ring-teal-200",
+  gray: "bg-gray-100 text-gray-700 ring-gray-200 dark:bg-gray-800/60 dark:text-gray-300 dark:ring-gray-700",
+  blue: "bg-blue-50 text-blue-800 ring-blue-200 dark:bg-blue-950/50 dark:text-blue-300 dark:ring-blue-900",
+  amber: "bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-900",
+  green: "bg-emerald-50 text-emerald-800 ring-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:ring-emerald-900",
+  red: "bg-red-50 text-red-800 ring-red-200 dark:bg-red-950/50 dark:text-red-300 dark:ring-red-900",
+  violet: "bg-violet-50 text-violet-800 ring-violet-200 dark:bg-violet-950/50 dark:text-violet-300 dark:ring-violet-900",
+  teal: "bg-teal-50 text-teal-800 ring-teal-200 dark:bg-teal-950/50 dark:text-teal-300 dark:ring-teal-900",
 };
 
 export function Badge({ tone = "gray", children, className }: { tone?: Tone; children: ReactNode; className?: string }) {

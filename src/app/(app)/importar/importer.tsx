@@ -231,9 +231,9 @@ export function Importer() {
           )}
           {phase === "reading" && <span className="text-sm text-ink-soft">{progress || "Lendo planilha…"}</span>}
         </div>
-        {error && <p className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
+        {error && <p className="mt-3 rounded-md bg-red-50 dark:bg-red-950/40 px-3 py-2 text-sm text-red-800 dark:text-red-300">{error}</p>}
         {workbook?.warnings.map((w) => (
-          <p key={w} className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p key={w} className="mt-3 rounded-md bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-900 dark:text-amber-200">
             {w}
           </p>
         ))}
@@ -258,7 +258,7 @@ export function Importer() {
               ))}
             </dl>
             {result.warnings.map((w) => (
-              <p key={w} className="mt-3 text-sm text-amber-800">
+              <p key={w} className="mt-3 text-sm text-amber-800 dark:text-amber-300">
                 {w}
               </p>
             ))}
@@ -269,7 +269,7 @@ export function Importer() {
               </summary>
               <p className="mt-2 text-ink-soft">{result.recognizedColumns.join(" · ")}</p>
               {result.ignoredColumns.length > 0 && (
-                <p className="mt-2 text-amber-800">Ignoradas: {result.ignoredColumns.join(" · ")}</p>
+                <p className="mt-2 text-amber-800 dark:text-amber-300">Ignoradas: {result.ignoredColumns.join(" · ")}</p>
               )}
             </details>
           </Card>
@@ -328,7 +328,7 @@ export function Importer() {
             bodyClassName="p-0"
           >
             <Table className="max-h-[32rem] overflow-y-auto">
-              <thead className="sticky top-0 bg-white">
+              <thead className="sticky top-0 bg-panel">
                 <tr>
                   <th>Código</th>
                   <th>Descrição escolhida</th>
@@ -403,7 +403,7 @@ export function Importer() {
           <Card title="5. Importar">
             {phase === "done" && summary ? (
               <div className="text-sm">
-                <p className="font-medium text-emerald-800">Importação concluída.</p>
+                <p className="font-medium text-emerald-800 dark:text-emerald-300">Importação concluída.</p>
                 <p className="mt-1 text-ink-soft">
                   {summary.produtos_novos} produtos novos · {summary.produtos_existentes} atualizados (só campos
                   vazios) · {summary.codigos} códigos · {summary.demandas} demandas · {summary.amostras} amostras ·{" "}

@@ -46,7 +46,7 @@ export function CodeInput({
         onBlur={(e) => check(e.currentTarget.value)}
       />
       {hit && (
-        <p className="mt-1 text-xs text-amber-800">
+        <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
           Este código já está cadastrado no produto{" "}
           <Link href={`/produtos/${hit.id}`} className="font-semibold underline">
             {hit.code}
