@@ -27,7 +27,7 @@ const OPTIONS: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
   { value: "system", label: "Automático (segue o aparelho)", icon: Monitor },
 ];
 
-export function ThemeToggle({ className }: { className?: string }) {
+export function ThemeToggle({ className, vertical = false }: { className?: string; vertical?: boolean }) {
   const [choice, setChoice] = useState<ThemeChoice>("system");
 
   useEffect(() => {
@@ -54,7 +54,7 @@ export function ThemeToggle({ className }: { className?: string }) {
   }
 
   return (
-    <div role="radiogroup" aria-label="Tema" className={clsx("inline-flex rounded-md border border-line bg-surface p-0.5", className)}>
+    <div role="radiogroup" aria-label="Tema" className={clsx("inline-flex rounded-md border border-line bg-surface p-0.5", vertical && "lg:flex-col", className)}>
       {OPTIONS.map(({ value, label, icon: Icon }) => (
         <button
           key={value}

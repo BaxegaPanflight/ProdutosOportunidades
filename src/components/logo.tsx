@@ -17,3 +17,11 @@ export function Logo({ className }: { className?: string }) {
     </span>
   );
 }
+
+/** Só o bloco azul "PAN", para o menu recolhido (serve nos dois temas). */
+export function LogoMark({ className }: { className?: string }) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/logo-panflight-mark.png" alt="Panflight" width={294} height={97} className={clsx("h-auto w-full", className)} />
+  );
+}

@@ -11,7 +11,8 @@ export interface NavProps {
   canManageLists: boolean;
 }
 
-export function Nav({ canImport, canManageUsers, canManageLists }: NavProps) {
+/** collapsed: menu recolhido no computador (só ícones, nome no balão ao passar o mouse) */
+export function Nav({ canImport, canManageUsers, canManageLists, collapsed = false }: NavProps & { collapsed?: boolean }) {
   const path = usePathname();
   const items = [
     { href: "/produtos", label: "Produtos", icon: Boxes, match: (p: string) => p.startsWith("/produtos") && p !== "/produtos/novo" },
@@ -32,15 +33,18 @@ export function Nav({ canImport, canManageUsers, canManageLists }: NavProps) {
             key={it.href}
             href={it.href}
             aria-current={active ? "page" : undefined}
+            aria-label={collapsed ? it.label : undefined}
+            title={collapsed ? it.label : undefined}
             className={clsx(
               "relative flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-colors lg:py-2",
+              collapsed && "lg:justify-center lg:px-0",
               active
                 ? "bg-brand-50 font-semibold text-brand-800 before:absolute before:inset-y-1.5 before:left-0 before:w-1 before:rounded-full before:bg-brand-700"
                 : "text-ink-soft hover:bg-surface hover:text-ink",
             )}
           >
-            <Icon className={clsx("size-[18px]", active ? "text-brand-700" : "text-ink-faint")} aria-hidden />
-            {it.label}
+            <Icon className={clsx("size-[18px] shrink-0", active ? "text-brand-700" : "text-ink-faint")} aria-hidden />
+            <span className={clsx("truncate", collapsed && "lg:hidden")}>{it.label}</span>
           </Link>
         );
       })}
