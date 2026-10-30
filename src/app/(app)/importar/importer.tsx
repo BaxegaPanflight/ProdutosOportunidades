@@ -8,8 +8,8 @@ import { openXlsx, type XlsxWorkbook } from "@/lib/import/xlsx-stream";
 import { mapColumns, parsePlanilha, toPayload } from "@/lib/import/planilha";
 import type { DemandOrigin, ImportGroup, ParseResult, SheetData } from "@/lib/import/types";
 import { ORIGIN, STATUS } from "@/lib/labels";
+import { uploadPhotos, type PhotoReport } from "@/lib/import/photos";
 import { createClient } from "@/lib/supabase/client";
-import { IMAGE_BUCKET } from "@/lib/storage";
 
 type Phase = "idle" | "reading" | "ready" | "importing" | "done";
 type Existing = Map<string, { productId: string; mainCode: string }>;
@@ -17,19 +17,6 @@ type Existing = Map<string, { productId: string; mainCode: string }>;
 const CHUNK = 100;
 /** nomes comuns da aba principal de dados */
 const DATA_SHEET = /^(data|dados|base|demandas)$/i;
-const MIME: Record<string, string> = {
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  gif: "image/gif",
-  webp: "image/webp",
-};
-
-async function sha256(data: Uint8Array) {
-  const h = await crypto.subtle.digest("SHA-256", data as BufferSource);
-  return Array.from(new Uint8Array(h), (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 export function Importer() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +30,7 @@ export function Importer() {
   const [filter, setFilter] = useState("");
   const [progress, setProgress] = useState("");
   const [summary, setSummary] = useState<Record<string, number> | null>(null);
+  const [photos, setPhotos] = useState<PhotoReport | null>(null);
 
   const result: ParseResult | null = useMemo(() => {
     if (!sheet) return null;
@@ -123,10 +111,24 @@ export function Importer() {
     return null;
   };
 
+  async function sendPhotos(productIdOf: (g: ImportGroup) => string | undefined) {
+    if (!result || !sheet) return null;
+    const report = await uploadPhotos(createClient(), sheet, result.groups, productIdOf, `planilha ${fileName}`, (done, total, r) =>
+      setProgress(
+        `Enviando fotos: ${done.toLocaleString("pt-BR")} de ${total.toLocaleString("pt-BR")}` +
+          (r.failed.length ? ` · ${r.failed.length} com erro` : "") +
+          " — mantenha esta página aberta…",
+      ),
+    );
+    setPhotos(report);
+    return report;
+  }
+
   async function runImport() {
     if (!result || !sheet) return;
     setPhase("importing");
     setError(null);
+    setPhotos(null);
     const supabase = createClient();
     const totals: Record<string, number> = {};
     const productByKey = new Map<string, string>();
@@ -142,50 +144,31 @@ export function Importer() {
         for (const [k, v] of Object.entries(res.stats)) totals[k] = (totals[k] ?? 0) + v;
         for (const p of res.products) productByKey.set(p.key, p.product_id);
       }
-
-      // fotos
-      let sent = 0;
-      let skipped = 0;
-      const withImages = result.groups.filter((g) => g.imageIndexes.length);
-      for (const [gi, g] of withImages.entries()) {
-        const pid = productByKey.get(g.key);
-        if (!pid) continue;
-        setProgress(`Enviando fotos: produto ${gi + 1} de ${withImages.length}…`);
-        const seen = new Set<string>();
-        for (const idx of g.imageIndexes) {
-          const img = sheet.images[idx];
-          const mime = MIME[img.ext];
-          if (!mime) {
-            skipped++;
-            continue;
-          }
-          const data = await img.load();
-          const sha = await sha256(data);
-          if (seen.has(sha)) continue;
-          seen.add(sha);
-          const path = `products/${pid}/${sha.slice(0, 32)}.${img.ext === "jpeg" ? "jpg" : img.ext}`;
-          const { error: upErr } = await supabase.storage
-            .from(IMAGE_BUCKET)
-            .upload(path, data, { contentType: mime, upsert: false });
-          if (upErr && !/exists|duplicate/i.test(upErr.message)) throw new Error(`Foto de ${g.main_code}: ${upErr.message}`);
-          const { error: e2 } = await supabase
-            .from("product_images")
-            .upsert(
-              { product_id: pid, storage_path: path, sha256: sha, source: `planilha ${fileName}` },
-              { onConflict: "storage_path", ignoreDuplicates: true },
-            );
-          if (e2) throw new Error(e2.message);
-          sent++;
-        }
-      }
-      totals.fotos = sent;
-      if (skipped) totals.fotos_ignoradas = skipped;
       setSummary(totals);
+      await sendPhotos((g) => productByKey.get(g.key));
       setPhase("done");
     } catch (e) {
       setError(
         `A importação parou: ${(e as Error).message}. O que já foi gravado fica salvo; pode importar o mesmo arquivo de novo sem duplicar.`,
       );
+      setPhase("ready");
+    } finally {
+      setProgress("");
+    }
+  }
+
+  /** Para quando os produtos já foram importados e faltam (ou falharam) as fotos. */
+  async function runPhotosOnly() {
+    if (!result || !sheet) return;
+    setPhase("importing");
+    setError(null);
+    setSummary(null);
+    setPhotos(null);
+    try {
+      await sendPhotos((g) => matchOf(g)?.productId);
+      setPhase("done");
+    } catch (e) {
+      setError(`O envio das fotos parou: ${(e as Error).message}. Pode tentar de novo; as fotos já enviadas são puladas.`);
       setPhase("ready");
     } finally {
       setProgress("");
@@ -401,32 +384,83 @@ export function Importer() {
           </Card>
 
           <Card title="5. Importar">
-            {phase === "done" && summary ? (
+            {phase === "done" && (summary || photos) ? (
               <div className="text-sm">
-                <p className="font-medium text-emerald-800 dark:text-emerald-300">Importação concluída.</p>
-                <p className="mt-1 text-ink-soft">
-                  {summary.produtos_novos} produtos novos · {summary.produtos_existentes} atualizados (só campos
-                  vazios) · {summary.codigos} códigos · {summary.demandas} demandas · {summary.amostras} amostras ·{" "}
-                  {summary.precos} preços · {summary.pareceres} pareceres · {summary.fotos} fotos
-                  {summary.conflitos ? ` · ${summary.conflitos} produto(s) com códigos em mais de um cadastro` : ""}
+                <p className="font-medium text-emerald-800 dark:text-emerald-300">
+                  {summary ? "Importação concluída." : "Envio das fotos concluído."}
                 </p>
-                <Link href="/produtos" className={`${btn("primary")} mt-3`}>
-                  Ver produtos
-                </Link>
+                {summary && (
+                  <p className="mt-1 text-ink-soft">
+                    {summary.produtos_novos} produtos novos · {summary.produtos_existentes} atualizados (só campos
+                    vazios) · {summary.codigos} códigos · {summary.demandas} demandas · {summary.amostras} amostras ·{" "}
+                    {summary.precos} preços · {summary.pareceres} pareceres
+                    {summary.conflitos ? ` · ${summary.conflitos} produto(s) com códigos em mais de um cadastro` : ""}
+                  </p>
+                )}
+                {photos && <PhotoSummary report={photos} />}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link href="/produtos" className={btn("primary")}>
+                    Ver produtos
+                  </Link>
+                  {photos && photos.failed.length > 0 && (
+                    <button className={btn("secondary")} onClick={runPhotosOnly}>
+                      Tentar de novo as fotos com erro
+                    </button>
+                  )}
+                </div>
               </div>
             ) : (
-              <div className="flex flex-wrap items-center gap-3">
-                <button className={btn("primary")} disabled={phase === "importing"} onClick={runImport}>
-                  {phase === "importing" ? "Importando…" : `Importar ${groups.length} produtos`}
-                </button>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <button className={btn("primary")} disabled={phase === "importing"} onClick={runImport}>
+                    {phase === "importing" ? "Importando…" : `Importar ${groups.length} produtos e ${result.stats.images} fotos`}
+                  </button>
+                  {existingCount > 0 && result.stats.images > 0 && (
+                    <button className={btn("secondary")} disabled={phase === "importing"} onClick={runPhotosOnly}>
+                      Enviar só as fotos ({existingCount} produtos já cadastrados)
+                    </button>
+                  )}
+                </div>
                 <span className="text-sm text-ink-soft">
                   {progress ||
-                    "Produtos existentes não são sobrescritos: só campos vazios são completados. Reimportar o mesmo arquivo não duplica registros."}
+                    "Produtos existentes não são sobrescritos: só campos vazios são completados. Reimportar o mesmo arquivo não duplica registros nem fotos."}
                 </span>
+                {photos && <PhotoSummary report={photos} />}
               </div>
             )}
           </Card>
         </>
+      )}
+    </div>
+  );
+}
+
+function PhotoSummary({ report: r }: { report: PhotoReport }) {
+  return (
+    <div className="mt-3 rounded-md border border-line p-3">
+      <p className="font-medium text-ink">Fotos</p>
+      <p className="mt-1 text-ink-soft">
+        {r.sent.toLocaleString("pt-BR")} enviadas · {r.alreadyThere.toLocaleString("pt-BR")} já estavam no sistema
+        {r.unsupported ? ` · ${r.unsupported} em formato não suportado` : ""}
+        {r.noProduct ? ` · ${r.noProduct} de produtos ainda não cadastrados` : ""}
+        {r.failed.length ? ` · ${r.failed.length} com erro` : ""}
+      </p>
+      {r.stoppedBy && (
+        <p className="mt-2 rounded-md bg-red-50 px-3 py-2 text-red-800 dark:bg-red-950/40 dark:text-red-300">
+          O envio foi interrompido porque todas as fotos estavam falhando pelo mesmo motivo: {r.stoppedBy}
+        </p>
+      )}
+      {r.failed.length > 0 && !r.stoppedBy && (
+        <details className="mt-2">
+          <summary className="cursor-pointer text-brand-700">Ver fotos com erro</summary>
+          <ul className="mt-2 max-h-48 overflow-y-auto text-xs text-ink-soft">
+            {r.failed.slice(0, 200).map((f, i) => (
+              <li key={i}>
+                <span className="font-mono">{f.code}</span>: {f.message}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </div>
   );
